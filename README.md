@@ -119,4 +119,6 @@ Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
 - **Dates ClickUp** : une date sans heure est envoyée à midi, heure de Paris, pour éviter tout
   décalage de jour.
 - **sync_log.tache_id** : sans clé étrangère, pour garder le journal même si la tâche est supprimée.
-
+- **Protection des données en ligne** : si Supabase n'est pas branché, l'app en ligne refuse de
+  démarrer (la base de secours SQLite serait effacée à chaque redémarrage de Streamlit Cloud).
+  SQLite reste utilisable en local, sur `localhost`.

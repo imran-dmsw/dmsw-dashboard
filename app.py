@@ -3,6 +3,7 @@
 Lancer :  streamlit run app.py
 """
 import hmac
+import os
 
 import streamlit as st
 
@@ -56,6 +57,20 @@ def check_password() -> bool:
 
 
 if not check_password():
+    st.stop()
+
+# En ligne, la base de secours SQLite est effacée à chaque redémarrage de Streamlit Cloud :
+# on refuse de démarrer plutôt que d'enregistrer des données qui disparaîtront.
+# (DMSW_AUTORISER_SQLITE=1 : réservé aux tests automatiques.)
+if db.mode() == "sqlite" and not est_local() and os.environ.get("DMSW_AUTORISER_SQLITE") != "1":
+    ui.logo("login")
+    st.error("**Supabase n'est pas branché : l'app est bloquée pour protéger tes données.**  \n"
+             "Sans Supabase, tout ce qui est saisi en ligne serait effacé au prochain redémarrage.")
+    st.markdown("Dans Streamlit Cloud → ⋮ → **Settings → Secrets**, vérifie ces deux lignes "
+                "(noms exacts, guillemets compris) :")
+    st.code('SUPABASE_URL = "https://xxxx.supabase.co"\nSUPABASE_KEY = "clé service_role"', language="toml")
+    st.caption("L'URL doit être celle du projet Supabase où tu as lancé schema.sql "
+               "(Supabase → Project Settings → API), sans « /rest/v1 » à la fin.")
     st.stop()
 
 # --- Navigation ------------------------------------------------------------
