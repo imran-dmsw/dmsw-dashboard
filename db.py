@@ -107,13 +107,46 @@ DEMO_PREFIX = "[Démo] "
 # Lecture des secrets (st.secrets, puis variables d'environnement)
 # ---------------------------------------------------------------------------
 def secret(name: str, default=None):
-    """Lit une clé dans st.secrets sans planter s'il n'y a pas de secrets.toml."""
+    """Lit une clé dans st.secrets sans planter s'il n'y a pas de secrets.toml.
+    Tolère une clé rangée par erreur sous une section TOML ([supabase], [connections.x]…)."""
     try:
         if name in st.secrets:
             return st.secrets[name]
+        for valeur in _sections(st.secrets):
+            if name in valeur:
+                return valeur[name]
     except Exception:
         pass
     return os.environ.get(name, default)
+
+
+def _sections(d, profondeur: int = 0):
+    """Sous-sections (tables TOML) des secrets, sur deux niveaux."""
+    if profondeur > 1:
+        return
+    for k in list(d.keys()):
+        v = d[k]
+        if hasattr(v, "keys"):
+            yield v
+            yield from _sections(v, profondeur + 1)
+
+
+def noms_secrets() -> list:
+    """Noms (jamais les valeurs) des secrets présents, sections comprises — pour le diagnostic."""
+    noms = []
+
+    def parcourir(d, prefixe=""):
+        for k in list(d.keys()):
+            v = d[k]
+            if hasattr(v, "keys"):
+                parcourir(v, f"{prefixe}{k}.")
+            else:
+                noms.append(f"{prefixe}{k}")
+    try:
+        parcourir(st.secrets)
+    except Exception:
+        pass
+    return noms
 
 
 def mode() -> str:

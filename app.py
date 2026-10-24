@@ -71,6 +71,12 @@ if db.mode() == "sqlite" and not est_local() and os.environ.get("DMSW_AUTORISER_
     st.code('SUPABASE_URL = "https://xxxx.supabase.co"\nSUPABASE_KEY = "clé service_role"', language="toml")
     st.caption("L'URL doit être celle du projet Supabase où tu as lancé schema.sql "
                "(Supabase → Project Settings → API), sans « /rest/v1 » à la fin.")
+    # Diagnostic : uniquement les NOMS des secrets, jamais leurs valeurs
+    noms = db.noms_secrets()
+    manquants = [n for n in ("SUPABASE_URL", "SUPABASE_KEY") if not db.secret(n)]
+    st.markdown("**Secrets trouvés (noms seulement) :** "
+                + (", ".join(f"`{n}`" for n in noms) if noms else "aucun"))
+    st.markdown("**Manquant(s) :** " + ", ".join(f"`{n}`" for n in manquants))
     st.stop()
 
 # --- Navigation ------------------------------------------------------------
