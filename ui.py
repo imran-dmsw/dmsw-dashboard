@@ -197,11 +197,13 @@ def kpis(items: list):
     st.markdown(f'<div class="kpi-grid">{cards}</div>', unsafe_allow_html=True)
 
 
-def carte_barres(titre: str, items: list, maximum: float | None = None, suffixe: str = ""):
-    """Carte à barres horizontales. items = [(libellé, valeur, couleur)]."""
+def carte_barres(titre: str, items: list, maximum: float | None = None, suffixe: str = "",
+                 formateur=None):
+    """Carte à barres horizontales. items = [(libellé, valeur, couleur)].
+    formateur : fonction d'affichage de la valeur (ex. db.fmt_euro)."""
     maxi = maximum or max([v for _, v, _ in items] + [1])
     lignes = "".join(
-        f'<div class="barre-ligne"><div class="haut"><span>{esc(lbl)}</span><b>{esc(v)}{suffixe}</b></div>'
+        f'<div class="barre-ligne"><div class="haut"><span>{esc(lbl)}</span><b>{esc(formateur(v) if formateur else v)}{suffixe}</b></div>'
         f'<div class="barre"><div style="width:{min(v / maxi, 1) * 100:.0f}%;background:{coul}"></div></div></div>'
         for lbl, v, coul in items
     )
@@ -248,3 +250,35 @@ def prochaine_action(taches: list):
         return None
     return min(ouvertes, key=lambda t: (t["date_limite"] or date.max,
                                          ordre_prio.get(t["priorite"], 2)))
+
+
+# --- ClickUp -----------------------------------------------------------------
+def clickup_non_configure():
+    """Message propre quand le token ClickUp est absent (l'app marche sans)."""
+    st.info("**Intégration ClickUp non configurée.** Ajoute `CLICKUP_TOKEN` et `CLICKUP_LIST_ID` "
+            "dans les secrets Streamlit pour activer cette section (voir le README).")
+
+
+def taches_sprint():
+    """Tâches du sprint ClickUp (en cache), ou (None, message d'erreur)."""
+    import clickup_client as cu
+    if not cu.configure():
+        return None, None
+    try:
+        return cu.taches_liste(cu.list_id(), True), None
+    except cu.ClickUpError as e:
+        return None, str(e)
+
+
+def indicateur_sprint():
+    """Pastille en haut de l'accueil : tâches du sprint ClickUp en retard."""
+    import clickup_client as cu
+    taches, erreur = taches_sprint()
+    if taches is None:
+        if erreur:
+            st.markdown(f'<span class="pill">🗂️ Sprint ClickUp : {esc(erreur)}</span>', unsafe_allow_html=True)
+        return
+    n = sum(cu.en_retard(t) for t in taches)
+    niveau = "rouge" if n else "ok"
+    st.markdown(voyant_html(niveau, f"🗂️ Sprint ClickUp : {n} tâche(s) en retard"),
+                unsafe_allow_html=True)

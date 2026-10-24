@@ -6,12 +6,15 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+import clickup_client as cu
 import db
 import demo
+import import_csv
+import sync
 import ui
 
 ui.entete("Réglages", "Paramètres",
-          "Seuils des alertes, sauvegarde et import CSV, données de démonstration.")
+          "Seuils des alertes, sauvegarde et import CSV, données de démonstration, ClickUp.")
 
 # --- Seuils d'alertes ----------------------------------------------------------
 st.markdown("### Seuils des alertes")
@@ -45,7 +48,7 @@ with st.form("seuils"):
 
 # --- Export ----------------------------------------------------------------------
 st.markdown("### Sauvegarde (export CSV)")
-tables = ["clients", "taches", "historique"]
+tables = ["clients", "taches", "historique", "sync_log"]
 frames = {t: pd.DataFrame(db.raw_rows(t), columns=["id", *db.TABLES[t]]) for t in tables}
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -54,88 +57,52 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
 st.download_button(f"⬇️ Tout exporter (zip, {sum(len(f) for f in frames.values())} lignes)",
                    buf.getvalue(), file_name=f"dmsw-sauvegarde-{date.today():%Y-%m-%d}.zip",
                    mime="application/zip", type="primary")
-cols = st.columns(3)
+cols = st.columns(len(frames))
 for col, (t, df) in zip(cols, frames.items()):
     col.download_button(f"{t}.csv ({len(df)})", df.to_csv(index=False).encode("utf-8-sig"),
                         file_name=f"{t}.csv", mime="text/csv", width="stretch")
 
 # --- Import ----------------------------------------------------------------------
-st.markdown("### Import de clients (CSV)")
-st.caption("Colonnes reconnues : celles du modèle (nom, activite, site_url, prix_site, "
-           "date_livraison…). La colonne « nom » est obligatoire. Les autres colonnes sont ignorées. "
-           "Dates acceptées : 2026-10-24 ou 24/10/2026. Chaque ligne crée un nouveau client.")
-modele = pd.DataFrame(columns=[c for c in db.CLIENT_FIELDS if c != "created_at"])
-st.download_button("Télécharger un modèle CSV vide", modele.to_csv(index=False).encode("utf-8-sig"),
-                   file_name="modele-clients.csv", mime="text/csv")
-fichier = st.file_uploader("Fichier CSV", type="csv")
-def importer(fichier):
-    """Lit, valide et importe le CSV (return = on s'arrête là)."""
-    try:
-        df = pd.read_csv(fichier, sep=None, engine="python", dtype=str, encoding="utf-8-sig").fillna("")
-    except Exception as e:
-        st.error(f"Impossible de lire le fichier : {e}")
-        return
-    df.columns = [c.strip() for c in df.columns]
-    connues = [c for c in df.columns if c in db.CLIENT_FIELDS and c != "created_at"]
-    if "nom" not in connues:
-        st.error("La colonne « nom » est obligatoire.")
-        return
-    ignorees = [c for c in df.columns if c not in connues]
-    if ignorees:
-        st.warning("Colonnes ignorées : " + ", ".join(ignorees))
+st.markdown("### Import (CSV ou zip)")
+st.caption("Dépose clients.csv, taches.csv et historique.csv, ou un .zip qui les contient. "
+           "Les tâches et l'historique sont rattachés au client par la colonne client_nom. "
+           "Dates acceptées : 2026-10-24 ou 24/10/2026. Relancer l'import ne crée aucun doublon : "
+           "un client, une tâche ou une ligne d'historique déjà présents sont ignorés.")
+modele = pd.DataFrame(columns=list(import_csv.CHAMPS_CLIENT))
+st.download_button("Télécharger un modèle clients.csv vide", modele.to_csv(index=False).encode("utf-8-sig"),
+                   file_name="clients.csv", mime="text/csv")
+deposes = st.file_uploader("Fichiers", type=["csv", "zip"], accept_multiple_files=True)
 
-    lignes, erreurs = [], []
-    for i, row in df[connues].iterrows():
-        data, probleme = {}, None
-        for col in connues:
-            v = row[col].strip()
-            typ = db.CLIENT_FIELDS[col]
-            if v == "":
-                continue
-            if typ == "date":
-                d = db.to_date(v)
-                if d is None:
-                    probleme = f"date invalide en « {col} » ({v})"
-                data[col] = d
-            elif typ == "float":
-                try:
-                    data[col] = float(v.replace(" ", "").replace(",", ".").replace("€", ""))
-                except ValueError:
-                    probleme = f"nombre invalide en « {col} » ({v})"
-            elif typ == "int":
-                try:
-                    data[col] = int(float(v.replace(",", ".")))
-                except ValueError:
-                    probleme = f"entier invalide en « {col} » ({v})"
-            elif typ == "bool":
-                data[col] = db.to_bool(v)
-            else:
-                data[col] = v
-        if not data.get("nom"):
-            probleme = "nom manquant"
-        for champ, choix in (("statut_projet", db.STATUTS_PROJET), ("seo_statut", db.SEO_STATUTS),
-                             ("fiche_google_statut", db.FICHE_GOOGLE_STATUTS)):
-            if champ in data and data[champ] not in choix:
-                probleme = f"valeur inconnue en « {champ} » ({data[champ]})"
-        if probleme:
-            erreurs.append(f"Ligne {i + 2} : {probleme}")
-        else:
-            lignes.append(data)
 
-    st.dataframe(df[connues].head(20), hide_index=True, width="stretch")
-    for e in erreurs:
+def afficher_rapport(r: dict, simulation: bool):
+    c = r["crees"]
+    verbe = "seront créés" if simulation else "créés"
+    st.markdown(f"**{c['clients']} client(s), {c['taches']} tâche(s), {c['historique']} ligne(s) "
+                f"d'historique {verbe}.** {len(r['ignores'])} déjà présent(s), ignoré(s).")
+    for e in r["erreurs"]:
         st.error(e)
-    if lignes and st.button(f"Importer {len(lignes)} client(s)", type="primary"):
-        for data in lignes:
-            if "solde_restant" not in data and "prix_site" in data:
-                data["solde_restant"] = max(data["prix_site"] - data.get("acompte_recu", 0), 0)
-            db.create_client(data)
-        ui.flash(f"{len(lignes)} client(s) importé(s).")
-        st.rerun()
+    if r["ignores"]:
+        with st.expander(f"Éléments ignorés ({len(r['ignores'])})"):
+            st.write("\n".join(f"- {x}" for x in r["ignores"]))
 
 
-if fichier is not None:
-    importer(fichier)
+if deposes:
+    try:
+        tables = import_csv.lire_fichiers([(f.name, f.getvalue()) for f in deposes])
+    except Exception as e:
+        tables = {}
+        st.error(f"Impossible de lire les fichiers : {e}")
+    if tables:
+        st.caption("Fichiers reconnus : " + ", ".join(f"{k}.csv ({len(v)} lignes)" for k, v in tables.items()))
+        apercu = import_csv.importer(tables, simulation=True)
+        afficher_rapport(apercu, simulation=True)
+        if sum(apercu["crees"].values()) and st.button("Importer", type="primary"):
+            r = import_csv.importer(tables)
+            ui.flash(f"Import terminé : {r['crees']['clients']} client(s), {r['crees']['taches']} tâche(s), "
+                     f"{r['crees']['historique']} ligne(s) d'historique.")
+            st.rerun()
+    elif deposes:
+        st.warning("Aucun fichier reconnu (clients.csv, taches.csv ou historique.csv).")
 
 # --- Démo ------------------------------------------------------------------------
 st.markdown("### Données de démonstration")
@@ -153,3 +120,49 @@ with b.popover("Supprimer les données de démo", width="stretch"):
     if st.button("Oui, supprimer la démo", type="primary"):
         ui.flash(f"{demo.supprimer()} client(s) de démo supprimé(s).", "🗑")
         st.rerun()
+
+# --- ClickUp ---------------------------------------------------------------------
+st.markdown("### ClickUp")
+if not cu.configure():
+    ui.clickup_non_configure()
+else:
+    regl = sync.reglages()
+    st.caption(f"Liste du sprint : {cu.list_id()} · token configuré (jamais affiché).")
+    with st.form("clickup_options"):
+        simulation = st.toggle("Mode simulation (la synchro montre ce qu'elle ferait, sans rien écrire)",
+                               value=regl["simulation"])
+        auto = st.toggle("Envoyer automatiquement les tâches urgentes et à échéance dans la semaine vers ClickUp",
+                         value=regl["auto_envoi"])
+        imp = st.toggle("Importer les tâches nées dans ClickUp (rattachées au client [Nom] ou à « DMSW (interne) »)",
+                        value=regl["import"])
+        if st.form_submit_button("Enregistrer les options ClickUp", type="primary"):
+            db.set_reglages({sync.R_SIMULATION: "1" if simulation else "0",
+                             sync.R_AUTO_ENVOI: "1" if auto else "0", sync.R_IMPORT: "1" if imp else "0"})
+            ui.flash("Options ClickUp enregistrées.")
+            st.rerun()
+
+    st.markdown("#### Correspondance des statuts")
+    try:
+        statuts = [s["nom"] for s in cu.statuts_liste(cu.list_id())]
+    except cu.ClickUpError as e:
+        statuts = []
+        st.error(str(e))
+    if statuts:
+        if not regl["mapping"]:
+            st.warning("Tant que la correspondance n'est pas enregistrée, la synchro des statuts est désactivée.")
+        actuel = {k: db.reglage(cle) for k, cle in sync.R_MAP.items()}
+        with st.form("clickup_mapping"):
+            cols = st.columns(3)
+            choix = {}
+            for col, (local, libelle) in zip(cols, db.TACHE_STATUTS.items()):
+                options = [""] + statuts
+                choix[local] = col.selectbox(f"« {libelle} » dans ClickUp", options,
+                                             index=options.index(actuel[local]) if actuel[local] in options else 0,
+                                             format_func=lambda s: s or "— choisir —")
+            if st.form_submit_button("Enregistrer la correspondance", type="primary"):
+                if not all(choix.values()):
+                    st.error("Choisis un statut ClickUp pour chacun des trois statuts.")
+                else:
+                    db.set_reglages({sync.R_MAP[k]: v for k, v in choix.items()})
+                    ui.flash("Correspondance des statuts enregistrée.")
+                    st.rerun()

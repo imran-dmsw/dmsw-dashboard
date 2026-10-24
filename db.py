@@ -41,22 +41,34 @@ CLIENT_FIELDS = {
     "date_derniere_mise_a_jour": "date", "double_auth": "bool", "securite_notes": "text",
     # Suivi
     "corrections_incluses": "int", "corrections_utilisees": "int", "created_at": "timestamp",
+    # Client technique « DMSW (interne) » : exclu des revenus et des alertes
+    "interne": "bool",
 }
 TACHE_FIELDS = {
     "client_id": "int", "titre": "text", "description": "text", "statut": "text",
     "priorite": "text", "date_limite": "date", "valide_par": "text",
     "date_validation": "date", "created_at": "timestamp",
+    # Lien ClickUp
+    "clickup_task_id": "text", "clickup_url": "text", "clickup_updated_at": "timestamp",
+    "clickup_delie": "bool", "updated_at": "timestamp",
 }
 HISTORIQUE_FIELDS = {"client_id": "int", "date": "timestamp", "type": "text", "texte": "text"}
-# Table technique (clé / valeur) pour les seuils d'alertes modifiables.
+# Table technique (clé / valeur) : seuils d'alertes et réglages ClickUp.
 PARAMETRES_FIELDS = {"cle": "text", "valeur": "text"}
+# Journal de synchronisation ClickUp
+SYNC_LOG_FIELDS = {
+    "date": "timestamp", "direction": "text", "tache_id": "int", "champ": "text",
+    "ancienne_valeur": "text", "nouvelle_valeur": "text", "resultat": "text",
+}
 
 TABLES = {
     "clients": CLIENT_FIELDS,
     "taches": TACHE_FIELDS,
     "historique": HISTORIQUE_FIELDS,
     "parametres": PARAMETRES_FIELDS,
+    "sync_log": SYNC_LOG_FIELDS,
 }
+NOM_CLIENT_INTERNE = "DMSW (interne)"
 
 # Valeurs possibles des listes déroulantes (valeur stockée -> libellé affiché)
 STATUTS_PROJET = {"prospect": "Prospect", "en_cours": "En cours", "livre": "Livré",
@@ -164,7 +176,7 @@ def _from_db(table: str, row: dict) -> dict:
         elif typ == "float":
             v = float(v) if v not in (None, "") else 0.0
         elif typ == "int":
-            v = int(v) if v not in (None, "") else (None if col == "client_id" else 0)
+            v = int(v) if v not in (None, "") else (None if col in ("client_id", "tache_id") else 0)
         out[col] = v
     return out
 
@@ -180,7 +192,10 @@ def _to_db(table: str, data: dict, sqlite: bool) -> dict:
         if typ in ("date", "timestamp"):
             if v in ("", None):
                 v = None
-            elif isinstance(v, (date, datetime)):
+            elif isinstance(v, datetime):
+                # Fuseau explicite : Postgres ne confond plus heure locale et UTC
+                v = (v.astimezone() if v.tzinfo is None else v).isoformat()
+            elif isinstance(v, date):
                 v = v.isoformat()
         elif typ == "bool":
             v = to_bool(v)
@@ -221,6 +236,14 @@ class SQLiteBackend:
                     else:
                         cols.append(f"{col} {_SQL_TYPES[typ]}")
                 conn.execute(f"CREATE TABLE IF NOT EXISTS {table} ({', '.join(cols)})")
+                # Migration : ajoute les colonnes manquantes sans toucher aux données
+                existantes = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+                for col, typ in fields.items():
+                    if col not in existantes:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {_SQL_TYPES[typ]}")
+            # Une tâche ClickUp ne peut être liée qu'à une seule tâche locale
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS taches_clickup_idx "
+                         "ON taches(clickup_task_id)")
 
     def select(self, table):
         with self._conn() as conn:
@@ -287,7 +310,9 @@ class SupabaseBackend:
 def get_backend():
     if mode() == "supabase":
         return SupabaseBackend(secret("SUPABASE_URL"), secret("SUPABASE_KEY"))
-    return SQLiteBackend(Path(__file__).parent / "data" / "dmsw.db")
+    # DMSW_DB_PATH : permet aux tests d'utiliser une base jetable
+    chemin = os.environ.get("DMSW_DB_PATH") or Path(__file__).parent / "data" / "dmsw.db"
+    return SQLiteBackend(Path(chemin))
 
 
 # ---------------------------------------------------------------------------
@@ -356,12 +381,21 @@ def taches(client_id=None) -> list:
     return rows
 
 
+def tache(tache_id) -> dict | None:
+    return next((t for t in _load("taches") if t["id"] == tache_id), None)
+
+
 def create_tache(data: dict) -> int:
-    row = {"statut": "a_faire", "priorite": "normale", **data, "created_at": datetime.now()}
+    now = datetime.now()
+    row = {"statut": "a_faire", "priorite": "normale", "updated_at": now, **data, "created_at": now}
     return _insert("taches", row)
 
 
-def update_tache(tache_id, data: dict):
+def update_tache(tache_id, data: dict, touch: bool = True):
+    """Met à jour une tâche. touch=True : updated_at = maintenant (modification locale).
+    La synchro ClickUp passe touch=False pour fixer elle-même updated_at."""
+    if touch:
+        data = {**data, "updated_at": datetime.now()}
     _update("taches", tache_id, data)
 
 
@@ -457,3 +491,51 @@ def set_parametres(values: dict):
             _update("parametres", existing[cle], {"valeur": str(valeur)})
         else:
             _insert("parametres", {"cle": cle, "valeur": str(valeur)})
+
+
+# ---------------------------------------------------------------------------
+# Réglages texte (ClickUp : mapping des statuts, options, date de synchro)
+# ---------------------------------------------------------------------------
+def reglage(cle: str, defaut: str = "") -> str:
+    row = next((r for r in _load("parametres") if r["cle"] == cle), None)
+    return row["valeur"] if row and row["valeur"] is not None else defaut
+
+
+def set_reglages(values: dict):
+    """Comme set_parametres, pour des valeurs texte quelconques."""
+    set_parametres({k: "" if v is None else v for k, v in values.items()})
+
+
+# ---------------------------------------------------------------------------
+# Client interne « DMSW (interne) » (tâches nées dans ClickUp)
+# ---------------------------------------------------------------------------
+def client_interne_id() -> int:
+    """Identifiant du client interne, créé à la première utilisation."""
+    existant = next((c for c in _load("clients") if c["interne"]), None)
+    if existant:
+        return existant["id"]
+    return create_client({
+        "nom": NOM_CLIENT_INTERNE, "activite": "Tâches internes de l'agence",
+        "statut_projet": "en_cours", "interne": True, "paiement_a_jour": True,
+        "corrections_incluses": 0, "seo_statut": "bon", "https_actif": True, "double_auth": True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Journal de synchronisation
+# ---------------------------------------------------------------------------
+def add_sync_log(direction: str, tache_id, champ: str, avant, apres, resultat: str):
+    _insert("sync_log", {
+        "date": datetime.now(), "direction": direction, "tache_id": tache_id, "champ": champ,
+        "ancienne_valeur": "" if avant is None else str(avant),
+        "nouvelle_valeur": "" if apres is None else str(apres), "resultat": resultat,
+    })
+
+
+def update_sync_log(log_id, data: dict):
+    _update("sync_log", log_id, data)
+
+
+def sync_log(limite: int | None = None) -> list:
+    rows = sorted(_load("sync_log"), key=lambda r: (r["date"] or datetime.min, r["id"]), reverse=True)
+    return rows[:limite] if limite else rows

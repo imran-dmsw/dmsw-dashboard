@@ -28,6 +28,30 @@ Ensuite : ⚙️ Paramètres → « Charger des données de démo » pour voir l
 9. Deploy. La barre latérale doit afficher « ☁️ Supabase ».
 10. Sauvegarde régulière : ⚙️ Paramètres → « Tout exporter (zip) ».
 
+## Importer tes clients (CSV ou zip)
+
+⚙️ Paramètres → « Import » : dépose `clients.csv`, `taches.csv` et `historique.csv`, ou un
+`.zip` qui les contient. Un aperçu indique ce qui sera créé avant de cliquer sur « Importer ».
+Rejouer l'import ne crée aucun doublon.
+
+## Intégration ClickUp (optionnelle)
+
+Sans token, l'app fonctionne normalement et les pages ClickUp affichent « Intégration non configurée ».
+
+1. **Token** : ClickUp → ton avatar → Settings → Apps → « API Token » → Generate. Il commence par `pk_`.
+2. **Secrets Streamlit** (App → Settings → Secrets), en plus des trois existants :
+   `CLICKUP_TOKEN = "pk_..."` et `CLICKUP_LIST_ID = "1200940000007891"`.
+3. **Supabase** : relance `schema.sql` dans le SQL Editor (la fin du fichier ajoute les colonnes
+   ClickUp sans perte de données ; le script peut être rejoué sans risque).
+4. ⚙️ Paramètres → ClickUp : choisis la correspondance des statuts (à faire / en cours / validé).
+5. 🔗 Synchronisation : la première synchro est **simulée** (rien n'est écrit). Vérifie l'aperçu,
+   puis clique sur « Passer en mode réel ».
+
+Pages : 🗂️ Sprint ClickUp (lecture), bouton « ➡️ Envoyer vers ClickUp » dans l'onglet Tâches
+d'une fiche client, 🔗 Synchronisation (journal, conflits, liaison manuelle).
+
+Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
+
 ## Fichiers
 
 | Fichier | Rôle |
@@ -37,6 +61,10 @@ Ensuite : ⚙️ Paramètres → « Charger des données de démo » pour voir l
 | `alerts.py` | Règles d'alertes (calculées à chaque chargement, jamais stockées) |
 | `ui.py` | Charte DMSW, CSS, voyants, cartes |
 | `demo.py` | Données de démonstration |
+| `import_csv.py` | Import clients / tâches / historique (CSV ou zip) |
+| `clickup_client.py` | Appels à l'API ClickUp (lecture, création, mise à jour, erreurs) |
+| `sync.py` | Synchronisation ClickUp dans les deux sens |
+| `tests/` | Tests `pytest` (ClickUp simulé, aucun appel réel) |
 | `views/` | Une page par fichier |
 | `schema.sql` | Tables Supabase |
 
@@ -69,3 +97,25 @@ Ensuite : ⚙️ Paramètres → « Charger des données de démo » pour voir l
   refuse s'ils sont déjà là. Un bouton supprime uniquement ces clients-là.
 - **Import CSV** : chaque ligne crée un nouveau client (pas de mise à jour d'un client existant).
 - **Historique** : la colonne `date` contient aussi l'heure, pour garder l'ordre dans une même journée.
+- **Design** : le prompt ClickUp reprenait l'ancienne charte sombre (Syne). La charte claire
+  validée ensuite est conservée partout.
+- **Tableau de bord** (📈) : chiffres de l'agence. « Chiffre d'affaires signé » = prix des sites
+  des clients en cours, livrés ou en maintenance. Le client interne et les archivés sont exclus.
+- **ClickUp, synchro** : par interrogation (Streamlit ne reçoit pas de webhooks), au chargement
+  si la dernière synchro date de plus de 5 minutes (jamais en mode simulation), ou via le bouton.
+  « Le plus récent gagne » compare l'heure de dernière modification de la tâche entière
+  (`updated_at` local et `date_updated` ClickUp), puis applique champ par champ.
+- **Conflit** : les deux côtés ont changé depuis la dernière synchro, à moins de 2 minutes
+  d'écart. Rien n'est appliqué tant que tu n'as pas choisi la version dans 🔗 Synchronisation.
+- **Statut ClickUp non mappé** (ex. « review ») : le statut de la tâche n'est pas synchronisé,
+  les autres champs le sont.
+- **Tâche déliée** : colonne `clickup_delie`. Supprimer une tâche dans le dashboard ne supprime
+  jamais la tâche ClickUp, et inversement.
+- **Import ClickUp** : seules les tâches non fermées sont importées. Le client « DMSW (interne) »
+  n'a aucune alerte et n'entre dans aucun total.
+- **Aujourd'hui** : la section Sprint ClickUp n'affiche pas les tâches déjà liées au dashboard
+  (elles sont déjà dans la liste au-dessus).
+- **Dates ClickUp** : une date sans heure est envoyée à midi, heure de Paris, pour éviter tout
+  décalage de jour.
+- **sync_log.tache_id** : sans clé étrangère, pour garder le journal même si la tâche est supprimée.
+

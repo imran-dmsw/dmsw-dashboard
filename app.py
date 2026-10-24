@@ -7,6 +7,7 @@ import hmac
 import streamlit as st
 
 import db
+import sync
 import ui
 
 st.set_page_config(page_title="DMSW — Tableau de bord", page_icon="📊", layout="wide")
@@ -60,10 +61,13 @@ if not check_password():
 # --- Navigation ------------------------------------------------------------
 PAGES = [
     st.Page("views/overview.py", title="Vue d'ensemble", icon="📊", default=True),
+    st.Page("views/chiffres.py", title="Tableau de bord", icon="📈"),
     st.Page("views/today.py", title="Aujourd'hui", icon="✅"),
     st.Page("views/client.py", title="Fiche client", icon="👤"),
     st.Page("views/edit_client.py", title="Nouveau / Modifier", icon="➕"),
     st.Page("views/calendar.py", title="Calendrier", icon="📅"),
+    st.Page("views/sprint.py", title="Sprint ClickUp", icon="🗂️"),
+    st.Page("views/synchronisation.py", title="Synchronisation", icon="🔗"),
     st.Page("views/settings.py", title="Paramètres", icon="⚙️"),
 ]
 page = st.navigation(PAGES, position="hidden")  # menu construit à la main sous le logo
@@ -77,6 +81,9 @@ with st.sidebar:
     if st.button("Se déconnecter", width="stretch"):
         st.session_state.clear()
         st.rerun()
+
+# Synchro ClickUp automatique (si configurée, hors simulation, toutes les 5 minutes)
+sync.synchro_auto()
 
 ui.show_flash()
 page.run()

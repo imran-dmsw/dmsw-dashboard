@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import streamlit as st
 
 import alerts
+import clickup_client as cu
 import db
 import ui
 from ui import esc, fmt_date
@@ -61,7 +62,6 @@ ui.kpis([
 
 if not (en_retard or semaine or liste_alertes):
     ui.bandeau("ok", "Tout est à jour 🎉 Aucun retard, aucune alerte. Profite pour prospecter ou souffler un peu !")
-    st.stop()
 
 if en_retard:
     st.markdown("### 1. Tâches en retard")
@@ -82,3 +82,29 @@ if liste_alertes:
                        width="stretch"):
             st.session_state["client_id"] = a["client_id"]
             st.switch_page("views/client.py")
+
+
+# --- Sprint ClickUp : tâches dues aujourd'hui ou en retard -----------------------
+# Les tâches déjà liées au dashboard apparaissent plus haut : on ne les répète pas.
+st.markdown("### Sprint ClickUp")
+sprint, erreur = ui.taches_sprint()
+if sprint is None:
+    if erreur:
+        st.error(erreur)
+    else:
+        ui.clickup_non_configure()
+else:
+    liees = {t["clickup_task_id"] for t in db.taches() if t["clickup_task_id"]}
+    jour = cu.aujourd_hui_paris()
+    dues = sorted([t for t in sprint if t["id"] not in liees and cu.due_bientot(t, 0, jour)],
+                  key=lambda t: t["date_limite"])
+    if not dues:
+        st.caption("Rien de dû aujourd'hui ni en retard dans le sprint ClickUp 👌")
+    for t in dues:
+        with st.container(border=True, key=f"carte_sprint_{t['id']}"):
+            a, b, d = st.columns([5, 2, 1.3], vertical_alignment="center")
+            niveau = "rouge" if cu.en_retard(t, jour) else "orange"
+            a.markdown(f"{ui.EMOJI_VOYANT[niveau]} **{esc(t['nom'])}**  \n"
+                       f"<span class='muted'>ClickUp · {esc(t['statut'])}</span>", unsafe_allow_html=True)
+            b.markdown(fmt_date(t["date_limite"]))
+            d.link_button("Ouvrir ↗", t["url"], width="stretch")

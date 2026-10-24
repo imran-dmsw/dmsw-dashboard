@@ -25,8 +25,9 @@ if not clients:
     st.stop()
 
 # --- Indicateurs -------------------------------------------------------------
-non_archives = [c for c in clients if c["statut_projet"] != "archive"]
-actifs = [c for c in clients if c["statut_projet"] in alerts.SUIVIS]
+# Le client « DMSW (interne) » est exclu des totaux (revenus, solde, clients actifs)
+non_archives = [c for c in clients if c["statut_projet"] != "archive" and not c["interne"]]
+actifs = [c for c in non_archives if c["statut_projet"] in alerts.SUIVIS]
 toutes = alerts.toutes_alertes(non_archives, p, today)
 ids_archives = {c["id"] for c in clients if c["statut_projet"] == "archive"}
 en_retard = [t for t in taches if t["statut"] != "valide" and t["date_limite"]
@@ -36,6 +37,8 @@ horizon = p["taches_horizon_jours"]
 a_venir = [t for t in taches if t["statut"] != "valide" and t["date_limite"]
            and 0 <= (t["date_limite"] - today).days <= horizon and t["client_id"] not in ids_archives]
 rouges = [a for a in toutes if a["niveau"] == "rouge"]
+
+ui.indicateur_sprint()
 
 # Bandeau d'état
 if rouges:

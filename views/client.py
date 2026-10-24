@@ -4,7 +4,9 @@ from datetime import date
 import streamlit as st
 
 import alerts
+import clickup_client as cu
 import db
+import sync
 import ui
 from ui import esc, fmt_date
 
@@ -158,6 +160,21 @@ with t_taches:
                             db.add_historique(cid, "tache", f"Tâche « {t['titre']} » supprimée.")
                             ui.flash("Tâche supprimée.", "🗑")
                             st.rerun()
+                        if t["clickup_task_id"]:
+                            st.caption("La tâche ClickUp liée n'est pas supprimée.")
+                    # Lien ClickUp : ouvrir la tâche liée, ou l'envoyer (jamais deux fois)
+                    if t["clickup_task_id"]:
+                        st.markdown(f"[Ouvrir dans ClickUp ↗]({t['clickup_url']})")
+                        if t["clickup_delie"]:
+                            st.caption("⚠️ Déliée : introuvable dans la liste ClickUp.")
+                    elif cu.configure():
+                        if st.button("➡️ Envoyer vers ClickUp", key=f"cu_{tid}", width="stretch"):
+                            try:
+                                sync.envoyer_tache(t, sync.reglages()["mapping"])
+                                ui.flash("Tâche créée dans ClickUp.")
+                                st.rerun()
+                            except cu.ClickUpError as e:
+                                st.error(str(e))
 
 # --- Argent ------------------------------------------------------------------
 with t_argent:

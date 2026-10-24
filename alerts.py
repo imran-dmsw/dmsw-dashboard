@@ -33,8 +33,8 @@ def alertes_client(c: dict, p: dict, today: date | None = None) -> list:
     """Toutes les alertes d'un client, selon les seuils `p` (db.parametres())."""
     today = today or date.today()
     statut = c["statut_projet"]
-    if statut == "archive":
-        return []
+    if statut == "archive" or c.get("interne"):
+        return []  # client archivé ou « DMSW (interne) » : jamais d'alerte
     out = []
 
     # --- Paiement ---------------------------------------------------------

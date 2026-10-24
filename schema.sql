@@ -86,3 +86,29 @@ alter table dmsw_clients enable row level security;
 alter table dmsw_taches enable row level security;
 alter table dmsw_historique enable row level security;
 alter table dmsw_parametres enable row level security;
+
+-- ===========================================================================
+-- Migration « intégration ClickUp » (sans perte de données).
+-- Peut être rejouée sans risque : chaque ligne vérifie si l'élément existe déjà.
+-- ===========================================================================
+alter table dmsw_clients add column if not exists interne boolean default false;
+
+alter table dmsw_taches add column if not exists clickup_task_id text;
+alter table dmsw_taches add column if not exists clickup_url text;
+alter table dmsw_taches add column if not exists clickup_updated_at timestamptz;
+alter table dmsw_taches add column if not exists clickup_delie boolean default false;
+alter table dmsw_taches add column if not exists updated_at timestamptz default now();
+-- Une tâche ClickUp n'est liée qu'à une seule tâche locale (plusieurs NULL autorisés)
+create unique index if not exists dmsw_taches_clickup_idx on dmsw_taches(clickup_task_id);
+
+create table if not exists dmsw_sync_log (
+  id bigint generated always as identity primary key,
+  date timestamptz not null default now(),
+  direction text not null check (direction in ('vers_clickup','depuis_clickup')),
+  tache_id bigint,                 -- pas de clé étrangère : le journal survit à la tâche
+  champ text,
+  ancienne_valeur text,
+  nouvelle_valeur text,
+  resultat text
+);
+alter table dmsw_sync_log enable row level security;
