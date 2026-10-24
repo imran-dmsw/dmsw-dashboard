@@ -15,7 +15,6 @@ CATEGORIES = {
     "paiement": "Paiement",
     "echeances": "Domaine / hébergement",
     "seo": "SEO",
-    "securite": "Sécurité",
     "suivi": "Suivi",
 }
 NIVEAUX = {"ok": 0, "orange": 1, "rouge": 2}
@@ -81,21 +80,6 @@ def alertes_client(c: dict, p: dict, today: date | None = None) -> list:
                                f"Dernier audit SEO il y a {(today - audit).days} j."))
         if c["seo_statut"] == "a_faire":
             out.append(_alerte(c, "seo", "orange", "SEO encore « à faire » sur un site livré."))
-
-    # --- Sécurité ---------------------------------------------------------
-    if statut in EN_LIGNE and not c["https_actif"]:
-        out.append(_alerte(c, "securite", "rouge", "HTTPS non actif sur un site en ligne."))
-    if statut == "maintenance":
-        for champ, libelle in (("date_derniere_sauvegarde", "sauvegarde"),
-                               ("date_derniere_mise_a_jour", "mise à jour")):
-            d = c[champ]
-            if not d:
-                out.append(_alerte(c, "securite", "orange", f"Aucune {libelle} enregistrée."))
-            elif (today - d).days > p["sauvegarde_jours"]:
-                out.append(_alerte(c, "securite", "orange",
-                                   f"Dernière {libelle} il y a {(today - d).days} j."))
-    if statut in SUIVIS and not c["double_auth"]:
-        out.append(_alerte(c, "securite", "orange", "Double authentification non activée."))
 
     # --- Suivi : corrections ---------------------------------------------
     incl, util = c["corrections_incluses"] or 0, c["corrections_utilisees"] or 0

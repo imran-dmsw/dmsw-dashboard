@@ -9,7 +9,7 @@ import db
 import ui
 
 ui.entete("Pilotage", "Vue d'ensemble",
-          "Tous tes clients d'un coup d'œil : argent, échéances, SEO et sécurité.")
+          "Tous tes clients d'un coup d'œil : argent, échéances et SEO.")
 
 today = date.today()
 p = db.parametres()
@@ -102,7 +102,6 @@ for c in clients:
         "Prochain paiement": c["date_prochain_paiement"],
         "Domaine / héb.": v["echeances"],
         "SEO": v["seo"],
-        "Sécurité": v["securite"],
         "Prochaine action": action["titre"] if action else "—",
         "Date limite": action["date_limite"] if action else None,
     })
@@ -126,7 +125,6 @@ event = st.dataframe(
         "Paiement": st.column_config.TextColumn(width="small"),
         "Domaine / héb.": st.column_config.TextColumn(width="small"),
         "SEO": st.column_config.TextColumn(width="small"),
-        "Sécurité": st.column_config.TextColumn(width="small"),
     },
 )
 st.caption("🟢 OK · 🟠 à surveiller · 🔴 urgent ou en retard")

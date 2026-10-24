@@ -1,4 +1,4 @@
-"""👤 Fiche client : en-tête + onglets Résumé, Tâches, Argent, SEO, Sécurité, Historique."""
+"""👤 Fiche client : en-tête + onglets Résumé, Tâches, Argent, SEO, Technique, Historique."""
 from datetime import date
 
 import streamlit as st
@@ -40,7 +40,7 @@ else:
 st.markdown(" ".join(ui.voyant_html(alerts.voyant(al, cat), lbl)
                      for cat, lbl in alerts.CATEGORIES.items() if cat != "suivi"),
             unsafe_allow_html=True)
-b_modif, b_suppr, _ = st.columns([1.3, 1.3, 3])
+b_modif, b_suppr, _ = st.columns([1.7, 1.5, 1.6])
 if b_modif.button("✏️ Modifier la fiche complète", width="stretch"):
     st.session_state["edit_client_id"] = cid
     st.switch_page("views/edit_client.py")
@@ -58,8 +58,8 @@ with b_suppr.popover("🗑 Supprimer ce client", width="stretch"):
         ui.flash(f"Client « {c['nom']} » supprimé.", "🗑")
         st.switch_page("views/overview.py")
 
-t_resume, t_taches, t_argent, t_seo, t_secu, t_histo = st.tabs(
-    ["Résumé", "Tâches", "Argent", "SEO", "Sécurité & technique", "Historique"])
+t_resume, t_taches, t_argent, t_seo, t_tech, t_histo = st.tabs(
+    ["Résumé", "Tâches", "Argent", "SEO", "Technique", "Historique"])
 
 # --- Résumé ------------------------------------------------------------------
 with t_resume:
@@ -265,25 +265,11 @@ with t_seo:
             ui.flash("SEO enregistré.")
             st.rerun()
 
-# --- Sécurité & technique ----------------------------------------------------
-with t_secu:
-    ui.kpis([
-        ("HTTPS", "Actif" if c["https_actif"] else "Inactif", "" if c["https_actif"] else "rouge"),
-        ("Double auth.", "Oui" if c["double_auth"] else "Non", ""),
-        ("Dernière sauvegarde", fmt_date(c["date_derniere_sauvegarde"]), ""),
-        ("Dernière mise à jour", fmt_date(c["date_derniere_mise_a_jour"]), ""),
-    ])
-    for x in (x for x in al if x["categorie"] in ("securite", "echeances")):
+# --- Technique ------------------------------------------------------------------
+with t_tech:
+    for x in (x for x in al if x["categorie"] == "echeances"):
         st.markdown(ui.alerte_html(x), unsafe_allow_html=True)
-    with st.form(f"secu_{cid}"):
-        st.markdown("##### Sécurité")
-        a, b = st.columns(2)
-        https = a.checkbox("HTTPS actif", value=c["https_actif"])
-        dauth = b.checkbox("Double authentification", value=c["double_auth"])
-        sauv = a.date_input("Dernière sauvegarde", c["date_derniere_sauvegarde"], format="DD/MM/YYYY")
-        maj = b.date_input("Dernière mise à jour", c["date_derniere_mise_a_jour"], format="DD/MM/YYYY")
-        s_notes = st.text_area("Notes sécurité", c["securite_notes"] or "")
-        st.markdown("##### Technique")
+    with st.form(f"tech_{cid}"):
         a, b = st.columns(2)
         heb = a.text_input("Hébergeur", c["hebergeur"] or "")
         stack = b.text_input("Stack", c["stack"] or "")
@@ -294,13 +280,11 @@ with t_secu:
                               help="Indique l'emplacement (ex. gestionnaire de mots de passe, dossier X). "
                                    "Ne saisis jamais de mot de passe ici.")
         if st.form_submit_button("Enregistrer", type="primary"):
-            db.update_client(cid, {"https_actif": https, "double_auth": dauth,
-                                   "date_derniere_sauvegarde": sauv, "date_derniere_mise_a_jour": maj,
-                                   "securite_notes": s_notes, "hebergeur": heb, "stack": stack,
+            db.update_client(cid, {"hebergeur": heb, "stack": stack,
                                    "date_renouvellement_domaine": d_dom,
                                    "date_renouvellement_hebergement": d_heb, "emplacement_acces": acces})
-            db.add_historique(cid, "technique", "Sécurité / technique mises à jour.")
-            ui.flash("Sécurité et technique enregistrées.")
+            db.add_historique(cid, "technique", "Informations techniques mises à jour.")
+            ui.flash("Technique enregistrée.")
             st.rerun()
 
 # --- Historique --------------------------------------------------------------

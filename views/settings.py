@@ -24,7 +24,6 @@ LIBELLES = {
     "renouvellement_orange_jours": "Renouvellement domaine / hébergement : orange sous X jours",
     "renouvellement_rouge_jours": "Renouvellement domaine / hébergement : rouge sous X jours",
     "audit_seo_jours": "Audit SEO trop ancien après X jours",
-    "sauvegarde_jours": "Sauvegarde / mise à jour trop ancienne après X jours (maintenance)",
     "taches_horizon_jours": "Page Aujourd'hui : tâches à venir sur X jours",
     "tarif_horaire": "Tarif horaire des corrections hors forfait (€/h)",
 }

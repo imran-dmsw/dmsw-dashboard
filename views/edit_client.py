@@ -91,14 +91,6 @@ with st.form(f"form_client_{choix}"):
         audit = st.date_input("Dernier audit SEO", c.get("date_dernier_audit_seo"), format="DD/MM/YYYY")
         seo_notes = st.text_area("Notes SEO", c.get("seo_notes") or "")
 
-    with st.expander("🔐 Sécurité"):
-        a, b = st.columns(2)
-        https_actif = a.checkbox("HTTPS actif", value=bool(c.get("https_actif")))
-        double_auth = b.checkbox("Double authentification", value=bool(c.get("double_auth")))
-        sauvegarde = a.date_input("Dernière sauvegarde", c.get("date_derniere_sauvegarde"), format="DD/MM/YYYY")
-        maj = b.date_input("Dernière mise à jour", c.get("date_derniere_mise_a_jour"), format="DD/MM/YYYY")
-        securite_notes = st.text_area("Notes sécurité", c.get("securite_notes") or "")
-
     with st.expander("📋 Suivi"):
         a, b = st.columns(2)
         corr_incl = a.number_input("Corrections incluses", 0, step=1, value=int(c.get("corrections_incluses") or 0))
@@ -140,9 +132,7 @@ if envoyer:
             "date_renouvellement_domaine": d_dom, "date_renouvellement_hebergement": d_heb,
             "emplacement_acces": emplacement_acces, "seo_statut": seo_statut,
             "fiche_google_statut": fiche_google, "search_console": search_console,
-            "date_dernier_audit_seo": audit, "seo_notes": seo_notes, "https_actif": https_actif,
-            "double_auth": double_auth, "date_derniere_sauvegarde": sauvegarde,
-            "date_derniere_mise_a_jour": maj, "securite_notes": securite_notes,
+            "date_dernier_audit_seo": audit, "seo_notes": seo_notes,
             "corrections_incluses": corr_incl, "corrections_utilisees": corr_util,
         }
         if nouveau:

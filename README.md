@@ -80,8 +80,9 @@ Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
   aussi accès aux tables de l'autre projet, d'où l'importance de la garder secrète.
 - **Seuils d'alertes** : stockés dans une petite table `parametres` (clé / valeur).
 - **« Site en ligne » / « site livré »** = statut `livre` ou `maintenance`. Les alertes SEO
-  et HTTPS ne concernent que ces sites. La double authentification est vérifiée pour les
-  statuts en cours, livré et maintenance. Les clients archivés n'ont aucune alerte.
+  ne concernent que ces sites. Les clients archivés n'ont aucune alerte.
+- **Partie Sécurité retirée** (HTTPS, sauvegardes, mises à jour, double authentification) :
+  plus d'onglet, de colonne ni d'alerte. Les colonnes restent en base, sans perte de données.
 - **Renouvellement déjà dépassé** = rouge.
 - **Corrections** : l'alerte ne s'affiche que si au moins une correction est incluse ou utilisée.
 - **« Marquer le paiement reçu »** : avec abonnement, la date avance d'un mois. Sans
