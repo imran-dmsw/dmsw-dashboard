@@ -104,7 +104,22 @@ with st.sidebar:
         st.rerun()
 
 # Synchro ClickUp automatique (si configurée, hors simulation, toutes les 5 minutes)
-sync.synchro_auto()
+try:
+    db.verifier_connexion()
+except db.DonneesError as e:
+    ui.logo("login")
+    st.error(f"**La base de données ne répond pas correctement.**  \n{e}")
+    st.caption("Après correction (secrets ou schema.sql), recharge la page.")
+    if st.button("🔄 Réessayer"):
+        db._load.clear()
+        db.get_backend.clear()
+        st.rerun()
+    st.stop()
+
+try:
+    sync.synchro_auto()
+except Exception:
+    pass  # la synchro automatique ne doit jamais empêcher l'app de s'ouvrir
 
 ui.show_flash()
 page.run()

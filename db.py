@@ -351,25 +351,67 @@ def get_backend():
 # ---------------------------------------------------------------------------
 # Lecture (mise en cache, vidée à chaque écriture)
 # ---------------------------------------------------------------------------
+class DonneesError(Exception):
+    """Erreur de base de données, avec un message lisible (jamais de clé ni de donnée)."""
+
+
+def message_erreur(e: Exception, table: str = "") -> str:
+    """Erreur Supabase/PostgREST -> explication en français + code d'origine."""
+    code = str(getattr(e, "code", "") or "")
+    brut = str(getattr(e, "message", "") or e)
+    nom = f"dmsw_{table}" if table else "une table dmsw_…"
+    if code == "42703" or ("column" in brut and "does not exist" in brut):
+        return "Une colonne manque dans Supabase : relance tout schema.sql (la migration peut être rejouée)."
+    if code in ("PGRST205", "42P01") or "schema cache" in brut or ("relation" in brut and "does not exist" in brut):
+        return (f"La table {nom} n'existe pas dans le projet Supabase des secrets. Lance schema.sql dans "
+                f"le SQL Editor du projet dont l'URL est SUPABASE_URL (deux projets ? vérifie lequel).")
+    if code == "42501" or "permission denied" in brut:
+        return "La clé Supabase n'a pas les droits : utilise la clé service_role (ou « secret »), pas la clé anon."
+    if code.startswith("PGRST3") or "JWT" in brut or "Invalid API key" in brut:
+        return "Clé Supabase invalide ou d'un autre projet : recopie la clé service_role du même projet que l'URL."
+    if (isinstance(e, (OSError, ConnectionError)) or type(e).__name__ in ("ConnectError", "ConnectTimeout")
+            or "Name or service not known" in brut or "nodename nor servname" in brut):
+        return "Impossible de joindre Supabase : vérifie SUPABASE_URL (https://xxxx.supabase.co)."
+    return f"Erreur Supabase ({code or type(e).__name__}) : {brut[:200]}"
+
+
+def _appel(fonction, table, *args):
+    """Exécute un appel au moteur ; toute erreur devient une DonneesError lisible."""
+    try:
+        return fonction(table, *args)
+    except DonneesError:
+        raise
+    except Exception as e:
+        if mode() == "sqlite":
+            raise
+        raise DonneesError(message_erreur(e, table)) from None
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def _load(table: str) -> list:
-    return [_from_db(table, r) for r in get_backend().select(table)]
+    return [_from_db(table, r) for r in _appel(get_backend().select, table)]
 
 
 def _insert(table, data) -> int:
-    row_id = get_backend().insert(table, _to_db(table, data, mode() == "sqlite"))
+    row_id = _appel(get_backend().insert, table, _to_db(table, data, mode() == "sqlite"))
     _load.clear()
     return row_id
 
 
 def _update(table, row_id, data):
-    get_backend().update(table, row_id, _to_db(table, data, mode() == "sqlite"))
+    _appel(get_backend().update, table, row_id, _to_db(table, data, mode() == "sqlite"))
     _load.clear()
 
 
 def _delete(table, row_id):
-    get_backend().delete(table, row_id)
+    _appel(get_backend().delete, table, row_id)
     _load.clear()
+
+
+def verifier_connexion():
+    """Lit chaque table une fois : lève DonneesError avec la cause exacte si ça échoue."""
+    for table in TABLES:
+        _load(table)
 
 
 def raw_rows(table: str) -> list:
