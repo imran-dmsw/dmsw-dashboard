@@ -40,9 +40,23 @@ else:
 st.markdown(" ".join(ui.voyant_html(alerts.voyant(al, cat), lbl)
                      for cat, lbl in alerts.CATEGORIES.items() if cat != "suivi"),
             unsafe_allow_html=True)
-if st.button("✏️ Modifier la fiche complète"):
+b_modif, b_suppr, _ = st.columns([1.3, 1.3, 3])
+if b_modif.button("✏️ Modifier la fiche complète", width="stretch"):
     st.session_state["edit_client_id"] = cid
     st.switch_page("views/edit_client.py")
+with b_suppr.popover("🗑 Supprimer ce client", width="stretch"):
+    nb_t = len(db.taches(cid))
+    st.markdown(f"**Suppression définitive** de « {esc(c['nom'])} », de ses {nb_t} tâche(s) et de "
+                f"son historique. Les tâches ClickUp liées ne sont pas supprimées.  \n"
+                f"Pour garder une trace sans l'afficher, préfère le statut « Archivé ».",
+                unsafe_allow_html=True)
+    confirmation = st.text_input("Tape le nom du client pour confirmer", key=f"suppr_{cid}")
+    if st.button("Supprimer définitivement", type="primary", key=f"suppr_ok_{cid}",
+                 disabled=confirmation.strip() != c["nom"].strip()):
+        db.delete_client(cid)
+        st.session_state.pop("client_id", None)
+        ui.flash(f"Client « {c['nom']} » supprimé.", "🗑")
+        st.switch_page("views/overview.py")
 
 t_resume, t_taches, t_argent, t_seo, t_secu, t_histo = st.tabs(
     ["Résumé", "Tâches", "Argent", "SEO", "Sécurité & technique", "Historique"])
