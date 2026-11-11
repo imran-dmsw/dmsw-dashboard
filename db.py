@@ -61,12 +61,22 @@ SYNC_LOG_FIELDS = {
     "ancienne_valeur": "text", "nouvelle_valeur": "text", "resultat": "text",
 }
 
+# Prospects venus des DM (Instagram importé automatiquement, TikTok saisi à la main)
+PROSPECT_FIELDS = {
+    "plateforme": "text", "pseudo": "text", "nom": "text", "profil_url": "text", "secteur": "text",
+    "statut": "text", "dernier_message_le": "timestamp", "dernier_message_de": "text",
+    "apercu": "text", "prochaine_relance": "date", "notes": "text", "client_lie_id": "int",
+    "ig_conversation_id": "text", "ig_user_id": "text", "created_at": "timestamp",
+    "updated_at": "timestamp",
+}
+
 TABLES = {
     "clients": CLIENT_FIELDS,
     "taches": TACHE_FIELDS,
     "historique": HISTORIQUE_FIELDS,
     "parametres": PARAMETRES_FIELDS,
     "sync_log": SYNC_LOG_FIELDS,
+    "prospects": PROSPECT_FIELDS,
 }
 NOM_CLIENT_INTERNE = "DMSW (interne)"
 
@@ -209,7 +219,7 @@ def _from_db(table: str, row: dict) -> dict:
         elif typ == "float":
             v = float(v) if v not in (None, "") else 0.0
         elif typ == "int":
-            v = int(v) if v not in (None, "") else (None if col in ("client_id", "tache_id") else 0)
+            v = int(v) if v not in (None, "") else (None if col in ("client_id", "tache_id", "client_lie_id") else 0)
         out[col] = v
     return out
 
@@ -275,6 +285,8 @@ class SQLiteBackend:
                     if col not in existantes:
                         conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {_SQL_TYPES[typ]}")
             # Une tâche ClickUp ne peut être liée qu'à une seule tâche locale
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS prospects_ig_idx "
+                         "ON prospects(ig_conversation_id)")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS taches_clickup_idx "
                          "ON taches(clickup_task_id)")
 
@@ -614,3 +626,28 @@ def update_sync_log(log_id, data: dict):
 def sync_log(limite: int | None = None) -> list:
     rows = sorted(_load("sync_log"), key=lambda r: (r["date"] or datetime.min, r["id"]), reverse=True)
     return rows[:limite] if limite else rows
+
+
+# ---------------------------------------------------------------------------
+# Prospects (DM Instagram / TikTok)
+# ---------------------------------------------------------------------------
+def prospects() -> list:
+    return sorted(_load("prospects"),
+                  key=lambda p: (p["dernier_message_le"] or p["created_at"] or datetime.min), reverse=True)
+
+
+def prospect(prospect_id) -> dict | None:
+    return next((p for p in _load("prospects") if p["id"] == prospect_id), None)
+
+
+def create_prospect(data: dict) -> int:
+    now = datetime.now()
+    return _insert("prospects", {"statut": "nouveau", "updated_at": now, **data, "created_at": now})
+
+
+def update_prospect(prospect_id, data: dict):
+    _update("prospects", prospect_id, {**data, "updated_at": datetime.now()})
+
+
+def delete_prospect(prospect_id):
+    _delete("prospects", prospect_id)

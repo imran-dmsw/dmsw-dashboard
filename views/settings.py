@@ -9,7 +9,9 @@ import streamlit as st
 import clickup_client as cu
 import db
 import demo
+import dm
 import import_csv
+import instagram_client as ig
 import sync
 import ui
 
@@ -47,7 +49,7 @@ with st.form("seuils"):
 
 # --- Export ----------------------------------------------------------------------
 st.markdown("### Sauvegarde (export CSV)")
-tables = ["clients", "taches", "historique", "sync_log"]
+tables = ["clients", "taches", "historique", "prospects", "sync_log"]
 frames = {t: pd.DataFrame(db.raw_rows(t), columns=["id", *db.TABLES[t]]) for t in tables}
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -165,3 +167,33 @@ else:
                     db.set_reglages({sync.R_MAP[k]: v for k, v in choix.items()})
                     ui.flash("Correspondance des statuts enregistrée.")
                     st.rerun()
+
+# --- Instagram ------------------------------------------------------------------------
+st.markdown("### Instagram (DM)")
+if not ig.configure():
+    st.info("**Instagram non relié.** Ajoute `INSTAGRAM_TOKEN` dans les secrets Streamlit "
+            "(guide pas à pas dans le README).")
+else:
+    expire = ig.expiration()
+    st.caption("Jeton configuré (jamais affiché). "
+               + (f"Expire vers le {expire:%d/%m/%Y} ; renouvelé automatiquement chaque semaine."
+                  if expire else "Il sera renouvelé automatiquement (60 jours de validité à chaque fois)."))
+    a, b = st.columns(2)
+    if a.button("Tester la connexion Instagram", width="stretch"):
+        try:
+            compte = ig.moi()
+            db.set_reglages({dm.R_MOI: compte["username"]})
+            st.success(f"Connecté au compte @{compte['username']}.")
+        except ig.InstagramError as e:
+            st.error(str(e))
+    if b.button("Renouveler le jeton maintenant", width="stretch"):
+        try:
+            ui.flash(f"Jeton renouvelé jusqu'au {ig.rafraichir_token():%d/%m/%Y}.")
+            st.rerun()
+        except ig.InstagramError as e:
+            st.error(f"{e} (Meta n'accepte le renouvellement qu'après 24 h.)")
+    if dm.ignores():
+        if st.button(f"Réautoriser les {len(dm.ignores())} conversation(s) retirées du suivi"):
+            db.set_reglages({dm.R_IGNORES: ""})
+            ui.flash("Elles reviendront au prochain import.")
+            st.rerun()

@@ -8,6 +8,7 @@ import os
 import streamlit as st
 
 import db
+import dm
 import sync
 import ui
 
@@ -84,6 +85,7 @@ PAGES = [
     st.Page("views/overview.py", title="Vue d'ensemble", icon="📊", default=True),
     st.Page("views/chiffres.py", title="Tableau de bord", icon="📈"),
     st.Page("views/today.py", title="Aujourd'hui", icon="✅"),
+    st.Page("views/prospects.py", title="Prospects DM", icon="💬"),
     st.Page("views/client.py", title="Fiche client", icon="👤"),
     st.Page("views/edit_client.py", title="Nouveau / Modifier", icon="➕"),
     st.Page("views/calendar.py", title="Calendrier", icon="📅"),
@@ -120,6 +122,10 @@ try:
     sync.synchro_auto()
 except Exception:
     pass  # la synchro automatique ne doit jamais empêcher l'app de s'ouvrir
+try:
+    dm.import_auto()  # DM Instagram, toutes les 15 minutes
+except Exception:
+    pass
 
 ui.show_flash()
 page.run()

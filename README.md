@@ -52,6 +52,31 @@ d'une fiche client, 🔗 Synchronisation (journal, conflits, liaison manuelle).
 
 Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
 
+## Suivi des DM Instagram et TikTok (💬 Prospects DM)
+
+TikTok se suit à la main (TikTok n'ouvre pas les messages privés aux comptes classiques).
+Instagram peut s'importer tout seul : le dashboard **lit** tes conversations (il n'envoie jamais rien).
+
+**Relier Instagram (une seule fois, environ 1 h) :**
+1. Ton compte Instagram doit être **professionnel** (Paramètres → Type de compte → Professionnel).
+2. Sur developers.facebook.com → « Mes apps » → **Créer une app** → type « Entreprise ».
+3. Ajoute le produit **Instagram** → « API setup with Instagram login ».
+4. Dans « Generate access tokens », clique **Add account** et connecte ton compte Instagram,
+   puis **Generate token**. Accepte les autorisations `instagram_business_basic` et
+   `instagram_business_manage_messages`. Copie le jeton (il commence souvent par `IGAA`).
+   L'app reste en mode développement : c'est suffisant pour ton propre compte (« Standard Access »).
+5. Secrets Streamlit : `INSTAGRAM_TOKEN = "IGAA..."`.
+6. Supabase : relance `schema.sql` (la fin ajoute la table `dmsw_prospects`).
+7. 💬 Prospects DM → **Importer Instagram** (environ 1 seconde par conversation la première fois).
+   Ensuite, l'import est automatique toutes les 15 minutes, et le jeton (60 jours) est
+   renouvelé chaque semaine et gardé dans la base. S'il expire quand même, refais l'étape 4.
+
+L'écran Meta change souvent : si un intitulé diffère, cherche « Generate access token » dans la
+section Instagram de ton app.
+
+**Limites Meta :** seuls les 20 derniers messages d'une conversation sont lisibles ; les
+« demandes » inactives depuis 30 jours ne sont pas renvoyées ; 2 appels par seconde maximum.
+
 ## Fichiers
 
 | Fichier | Rôle |
@@ -64,6 +89,8 @@ Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
 | `import_csv.py` | Import clients / tâches / historique (CSV ou zip) |
 | `clickup_client.py` | Appels à l'API ClickUp (lecture, création, mise à jour, erreurs) |
 | `sync.py` | Synchronisation ClickUp dans les deux sens |
+| `instagram_client.py` | Lecture des DM Instagram (API officielle Meta, lecture seule) |
+| `dm.py` | Suivi des prospects DM : import Instagram, relances, conversion en client |
 | `tests/` | Tests `pytest` (ClickUp simulé, aucun appel réel) |
 | `views/` | Une page par fichier |
 | `schema.sql` | Tables Supabase |
@@ -122,3 +149,11 @@ Lancer les tests : `pip install -r requirements-dev.txt` puis `pytest -q`.
 - **Protection des données en ligne** : si Supabase n'est pas branché, l'app en ligne refuse de
   démarrer (la base de secours SQLite serait effacée à chaque redémarrage de Streamlit Cloud).
   SQLite reste utilisable en local, sur `localhost`.
+- **DM Instagram, données personnelles** : seuls le pseudo, la date et l'auteur du dernier
+  message, et ses 120 premiers caractères sont gardés (pas l'historique des messages).
+  Un prospect supprimé du suivi n'est plus jamais réimporté (Paramètres → Instagram permet de
+  le réautoriser).
+- **Statut des prospects** : géré à la main. L'import ne change que la date et l'auteur du
+  dernier message (d'où le badge « À répondre »). « Convertir en client » crée une fiche client
+  au statut « Prospect ».
+

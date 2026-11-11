@@ -112,3 +112,30 @@ create table if not exists dmsw_sync_log (
   resultat text
 );
 alter table dmsw_sync_log enable row level security;
+
+-- ===========================================================================
+-- Migration « suivi des DM » : prospects venus d'Instagram (import auto) et TikTok.
+-- Rejouable sans risque.
+-- ===========================================================================
+create table if not exists dmsw_prospects (
+  id bigint generated always as identity primary key,
+  plateforme text not null default 'instagram' check (plateforme in ('instagram','tiktok','autre')),
+  pseudo text,
+  nom text,
+  profil_url text,
+  secteur text,
+  statut text not null default 'nouveau'
+    check (statut in ('nouveau','en_discussion','relance','rdv','devis','converti','perdu')),
+  dernier_message_le timestamptz,
+  dernier_message_de text check (dernier_message_de in ('moi','eux')),
+  apercu text,                       -- début du dernier message (120 caractères max)
+  prochaine_relance date,
+  notes text,
+  client_lie_id bigint references dmsw_clients(id) on delete set null,
+  ig_conversation_id text,
+  ig_user_id text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create unique index if not exists dmsw_prospects_ig_idx on dmsw_prospects(ig_conversation_id);
+alter table dmsw_prospects enable row level security;

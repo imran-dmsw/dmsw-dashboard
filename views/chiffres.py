@@ -1,10 +1,11 @@
 """📈 Tableau de bord : les chiffres de l'agence (argent, abonnements, prospects, tâches)."""
-from datetime import date
+from datetime import date, datetime
 
 import streamlit as st
 
 import alerts
 import db
+import dm
 import ui
 
 ui.entete("Chiffres", "Tableau de bord",
@@ -89,5 +90,28 @@ for t in ouvertes:
 ui.carte_barres("Tâches ouvertes par client", sorted(
     [(noms[cid], n, ui.ROUGE if any(t["client_id"] == cid for t in retard) else ui.BLEU)
      for cid, n in par_client.items()], key=lambda x: -x[1])[:10] or [("Aucune tâche ouverte", 0, ui.BLEU)])
+# --- Prospects DM -----------------------------------------------------------------------
+st.markdown("### Prospects DM")
+prospects = db.prospects()
+if not prospects:
+    st.caption("Aucun prospect DM pour l'instant (page 💬 Prospects DM).")
+else:
+    recus_mois = [p for p in prospects if (p["created_at"] or datetime.min).date() >= debut_mois]
+    conv = [p for p in prospects if p["statut"] == "converti"]
+    ui.kpis([
+        ("Nouveaux DM ce mois-ci", len(recus_mois), "accent"),
+        ("À répondre", sum(dm.a_repondre(p) for p in prospects),
+         "rouge" if any(dm.a_repondre(p) for p in prospects) else ""),
+        ("Taux de conversion", f"{round(100 * len(conv) / len(prospects))} %", ""),
+    ])
+    g, d = st.columns(2)
+    with g:
+        ui.carte_barres("Prospects par plateforme", [
+            (lbl, sum(p["plateforme"] == k for p in prospects), ui.BLEU) for k, lbl in dm.PLATEFORMES.items()])
+    with d:
+        ui.carte_barres("Prospects par statut", [
+            (lbl, sum(p["statut"] == k for p in prospects), ui.VERT if k == "converti" else ui.BLEU)
+            for k, lbl in dm.STATUTS.items()])
+
 st.caption("Le client « DMSW (interne) » et les clients archivés sont exclus des chiffres "
            "(sauf le compteur d'archivés).")

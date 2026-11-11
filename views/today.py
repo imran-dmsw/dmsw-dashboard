@@ -6,6 +6,7 @@ import streamlit as st
 import alerts
 import clickup_client as cu
 import db
+import dm
 import ui
 from ui import esc, fmt_date
 
@@ -83,6 +84,23 @@ if liste_alertes:
             st.session_state["client_id"] = a["client_id"]
             st.switch_page("views/client.py")
 
+
+# --- Prospects DM : réponses en attente et relances du jour ------------------------
+st.markdown("### Prospects DM")
+dm_a_traiter = [p for p in db.prospects() if dm.a_traiter(p, today)]
+if not dm_a_traiter:
+    st.caption("Personne n'attend de réponse et aucune relance n'est due 👌")
+for p in dm_a_traiter[:15]:
+    with st.container(border=True, key=f"carte_dm_{p['id']}"):
+        a, b = st.columns([5, 1.3], vertical_alignment="center")
+        quoi = "attend ta réponse" if dm.a_repondre(p) else f"relance prévue le {fmt_date(p['prochaine_relance'])}"
+        a.markdown(f"{dm.ICONES.get(p['plateforme'], '💬')} **{esc(p['nom'] or '@' + (p['pseudo'] or ''))}** — {quoi}  \n"
+                   f"<span class='muted'>{esc(p['apercu'] or dm.STATUTS.get(p['statut'], ''))}</span>",
+                   unsafe_allow_html=True)
+        if p["profil_url"]:
+            b.link_button("Ouvrir ↗", p["profil_url"], width="stretch")
+if len(dm_a_traiter) > 15:
+    st.caption(f"… et {len(dm_a_traiter) - 15} autre(s) dans 💬 Prospects DM.")
 
 # --- Sprint ClickUp : tâches dues aujourd'hui ou en retard -----------------------
 # Les tâches déjà liées au dashboard apparaissent plus haut : on ne les répète pas.
